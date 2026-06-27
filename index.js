@@ -121,6 +121,7 @@ app.post('/create-card-payment', async (req, res) => {
 app.post('/create-pix', async (req, res) => {
   try {
     const { userId, plan, email } = req.body;
+    console.log('Gerando PIX para:', { userId, plan, email }); // <-- adiciona
 
     const amount = plan === 'yearly' ? 179.90 : 19.90;
     const description = plan === 'yearly' ? 'FluxTV Premium Anual' : 'FluxTV Premium Mensal';
@@ -142,10 +143,10 @@ app.post('/create-pix', async (req, res) => {
     });
 
     const payment = await response.json();
+    console.log('Resposta MP:', JSON.stringify(payment)); // <-- adiciona
 
     if (!payment.point_of_interaction) {
-    console.error('Erro MP:', JSON.stringify(payment)); // já tem isso
-    return res.status(400).json({ error: 'Erro ao gerar PIX', details: payment });
+      return res.status(400).json({ error: 'Erro ao gerar PIX', details: payment });
     }
 
     return res.json({
