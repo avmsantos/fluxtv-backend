@@ -134,12 +134,13 @@ app.post('/create-pix', async (req, res) => {
         'X-Idempotency-Key': `${userId}-${plan}-${Date.now()}`,
       },
       body: JSON.stringify({
-        transaction_amount: amount,
-        description: description,
-        payment_method_id: 'pix',
-        payer: { email: email },
-        metadata: { user_id: userId, plan: plan },
-      }),
+  transaction_amount: amount,
+  description: description,
+  payment_method_id: 'pix',
+  payer: { email: email },
+  metadata: { user_id: userId, plan: plan },
+  notification_url: 'https://fluxtv-backend-production.up.railway.app/webhook', // <-- adiciona
+}),
     });
 
     const payment = await response.json();
