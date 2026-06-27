@@ -179,5 +179,41 @@ app.get('/payment-status/:paymentId', async (req, res) => {
   }
 });
 
+// ─── CRIAR PREFERENCE (Desktop) ───────────────────────────────────────────────
+app.post('/create-preference', async (req, res) => {
+  try {
+    const { userId, plan, email } = req.body;
+
+    const amount = plan === 'yearly' ? 179.90 : 19.90;
+    const title = plan === 'yearly' ? 'FluxTV Premium Anual' : 'FluxTV Premium Mensal';
+
+    const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        items: [{ title, quantity: 1, unit_price: amount, currency_id: 'BRL' }],
+        payer: { email },
+        metadata: { user_id: userId, plan },
+        back_urls: {
+          success: 'https://fluxtv-player.web.app/premium-success',
+          failure: 'https://fluxtv-player.web.app/premium-failure',
+          pending: 'https://fluxtv-player.web.app/premium-pending',
+        },
+        auto_return: 'approved',
+      }),
+    });
+
+    const preference = await response.json();
+    return res.json({ checkoutUrl: preference.init_point });
+
+  } catch (error) {
+    console.error('Erro ao criar preference:', error);
+    return res.status(500).json({ error: 'Erro interno' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`FluxTV backend rodando na porta ${PORT}`));
