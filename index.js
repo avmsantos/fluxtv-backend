@@ -61,6 +61,62 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// ─── PAGAMENTO COM CARTÃO ─────────────────────────────────────────────────────
+app.post('/create-card-payment', async (req, res) => {
+  try {
+    const { token, issuer_id, payment_method_id, transaction_amount, installments, payer, metadata } = req.body;
+
+    const response = await fetch('https://api.mercadopago.com/v1/payments', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+        'X-Idempotency-Key': `card-${metadata?.user_id}-${Date.now()}`,
+      },
+      body: JSON.stringify({
+        token,
+        issuer_id,
+        payment_method_id,
+        transaction_amount,
+        installments,
+        payer,
+        metadata,
+      }),
+    });
+
+    const payment = await response.json();
+
+    if (payment.status === 'approved') {
+      const { Timestamp } = require('firebase-admin/firestore');
+      const userId = metadata?.user_id;
+      const plan = metadata?.plan;
+
+      if (userId) {
+        const now = new Date();
+        const renewalDate = new Date(now);
+        if (plan === 'yearly') {
+          renewalDate.setFullYear(renewalDate.getFullYear() + 1);
+        } else {
+          renewalDate.setMonth(renewalDate.getMonth() + 1);
+        }
+
+        await db.collection('users').doc(userId).set({
+          isPremium: true,
+          plan,
+          renewalDate: Timestamp.fromDate(renewalDate),
+          activatedAt: Timestamp.fromDate(now),
+        }, { merge: true });
+      }
+    }
+
+    return res.json({ status: payment.status, id: payment.id });
+
+  } catch (error) {
+    console.error('Erro pagamento cartão:', error);
+    return res.status(500).json({ error: 'Erro interno' });
+  }
+});
+
 // ─── GERAR PIX ───────────────────────────────────────────────────────────────
 app.post('/create-pix', async (req, res) => {
   try {
