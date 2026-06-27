@@ -144,8 +144,8 @@ app.post('/create-pix', async (req, res) => {
     const payment = await response.json();
 
     if (!payment.point_of_interaction) {
-      console.error('Erro MP:', payment);
-      return res.status(400).json({ error: 'Erro ao gerar PIX' });
+    console.error('Erro MP:', JSON.stringify(payment)); // já tem isso
+    return res.status(400).json({ error: 'Erro ao gerar PIX', details: payment });
     }
 
     return res.json({
