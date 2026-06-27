@@ -259,16 +259,15 @@ app.post('/create-preference', async (req, res) => {
 cron.schedule('0 0 * * *', async () => {
   console.log('Verificando assinaturas...');
   try {
-   const now = new Date();
-const targetDate = new Date(now);
-targetDate.setDate(targetDate.getDate() + 30); // Define o intervalo para 30 dias
+    const now = new Date();
+    const in3Days = new Date(now);
+    in3Days.setDate(in3Days.getDate() + 3);
 
-// Altere a query do aviso para usar o targetDate
-const warningSnapshot = await db.collection('users')
-  .where('isPremium', '==', true)
-  .where('renewalDate', '<=', Timestamp.fromDate(targetDate))
-  .where('renewalDate', '>', Timestamp.fromDate(now))
-  .get();
+    // Desativa expirados
+    const expiredSnapshot = await db.collection('users')
+      .where('isPremium', '==', true)
+      .where('renewalDate', '<=', Timestamp.fromDate(now))
+      .get();
 
     const batch = db.batch();
     expiredSnapshot.forEach(doc => {
