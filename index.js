@@ -123,7 +123,7 @@ app.post('/create-pix', async (req, res) => {
     const { userId, plan, email } = req.body;
     console.log('Gerando PIX para:', { userId, plan, email }); // <-- adiciona
 
-    const amount = plan === 'yearly' ? 1.00 : 1.00;
+    const amount = plan === 'yearly' ? 179.90 : 19.90;
     const description = plan === 'yearly' ? 'FluxTV Premium Anual' : 'FluxTV Premium Mensal';
 
     const response = await fetch('https://api.mercadopago.com/v1/payments', {
@@ -186,7 +186,7 @@ app.post('/create-preference', async (req, res) => {
   try {
     const { userId, plan, email } = req.body;
 
-    const amount = plan === 'yearly' ? 1.00 : 1.00;
+    const amount = plan === 'yearly' ? 179.90 : 19.90;
     const title = plan === 'yearly' ? 'FluxTV Premium Anual' : 'FluxTV Premium Mensal';
 
     const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
