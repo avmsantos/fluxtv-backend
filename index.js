@@ -2,6 +2,7 @@ const express = require('express');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 const dotenv = require('dotenv');
+const cron = require('node-cron');
 
 dotenv.config();
 
@@ -214,6 +215,28 @@ app.post('/create-preference', async (req, res) => {
   } catch (error) {
     console.error('Erro ao criar preference:', error);
     return res.status(500).json({ error: 'Erro interno' });
+  }
+});
+
+cron.schedule('0 0 * * *', async () => {
+  console.log('Verificando assinaturas expiradas...');
+  try {
+    const now = new Date();
+    const snapshot = await db.collection('users')
+      .where('isPremium', '==', true)
+      .where('renewalDate', '<=', Timestamp.fromDate(now))
+      .get();
+
+    const batch = db.batch();
+    snapshot.forEach(doc => {
+      batch.update(doc.ref, { isPremium: false });
+      console.log(`Premium expirado para usuário ${doc.id}`);
+    });
+
+    await batch.commit();
+    console.log(`${snapshot.size} assinatura(s) expirada(s) desativada(s).`);
+  } catch (error) {
+    console.error('Erro ao verificar assinaturas:', error);
   }
 });
 
