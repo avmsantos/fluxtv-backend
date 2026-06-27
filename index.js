@@ -1,8 +1,10 @@
 const express = require('express');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getFirestore, Timestamp } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
 const dotenv = require('dotenv');
 const cron = require('node-cron');
+const nodemailer = require('nodemailer');
 
 dotenv.config();
 
@@ -16,11 +18,47 @@ initializeApp({
 });
 const db = getFirestore();
 
+// ─── EMAIL ────────────────────────────────────────────────────────────────────
+const transporter = nodemailer.createTransport({
+  host: 'smtp-mail.outlook.com',
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+async function sendExpirationWarning(email, name, renewalDate) {
+  const date = renewalDate.toDate ? renewalDate.toDate() : new Date(renewalDate);
+  const formatted = `${date.getDate().toString().padStart(2,'0')}/${(date.getMonth()+1).toString().padStart(2,'0')}/${date.getFullYear()}`;
+  
+  await transporter.sendMail({
+    from: `"FluxTV" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: 'Seu plano FluxTV Premium expira em breve',
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #0D0D14; color: white; padding: 32px; border-radius: 12px;">
+        <h1 style="color: #6C63FF;">FluxTV Premium</h1>
+        <p>Olá${name ? ' ' + name : ''},</p>
+        <p>Seu plano <strong>FluxTV Premium</strong> expira em <strong>${formatted}</strong>.</p>
+        <p>Para continuar aproveitando todos os benefícios premium, renove seu plano:</p>
+        <a href="https://fluxtv-player.web.app" 
+           style="display: inline-block; background: #6C63FF; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin: 16px 0;">
+          Renovar Premium
+        </a>
+        <p style="color: #ffffff88; font-size: 13px;">Se você já renovou, ignore este email.</p>
+        <hr style="border-color: #ffffff22; margin: 24px 0;">
+        <p style="color: #ffffff44; font-size: 12px;">FluxTV — fluxiptv@outlook.com.br</p>
+      </div>
+    `,
+  });
+}
+
 // ─── WEBHOOK DO MERCADO PAGO ─────────────────────────────────────────────────
 app.post('/webhook', async (req, res) => {
   try {
     const { type, data } = req.body;
-
     if (type !== 'payment') return res.sendStatus(200);
 
     const paymentId = data?.id;
@@ -38,6 +76,9 @@ app.post('/webhook', async (req, res) => {
     const plan = payment.metadata?.plan;
     if (!userId) return res.sendStatus(400);
 
+    const auth = getAuth();
+    const userRecord = await auth.getUser(userId);
+
     const now = new Date();
     const renewalDate = new Date(now);
     if (plan === 'yearly') {
@@ -49,8 +90,11 @@ app.post('/webhook', async (req, res) => {
     await db.collection('users').doc(userId).set({
       isPremium: true,
       plan: plan,
+      email: userRecord.email,
+      name: userRecord.displayName || '',
       renewalDate: Timestamp.fromDate(renewalDate),
       activatedAt: Timestamp.fromDate(now),
+      warningSent: false,
     }, { merge: true });
 
     console.log(`Premium ativado para usuário ${userId} — plano ${plan}`);
@@ -74,21 +118,12 @@ app.post('/create-card-payment', async (req, res) => {
         'Content-Type': 'application/json',
         'X-Idempotency-Key': `card-${metadata?.user_id}-${Date.now()}`,
       },
-      body: JSON.stringify({
-        token,
-        issuer_id,
-        payment_method_id,
-        transaction_amount,
-        installments,
-        payer,
-        metadata,
-      }),
+      body: JSON.stringify({ token, issuer_id, payment_method_id, transaction_amount, installments, payer, metadata }),
     });
 
     const payment = await response.json();
 
     if (payment.status === 'approved') {
-      const { Timestamp } = require('firebase-admin/firestore');
       const userId = metadata?.user_id;
       const plan = metadata?.plan;
 
@@ -101,11 +136,17 @@ app.post('/create-card-payment', async (req, res) => {
           renewalDate.setMonth(renewalDate.getMonth() + 1);
         }
 
+        const auth = getAuth();
+        const userRecord = await auth.getUser(userId);
+
         await db.collection('users').doc(userId).set({
           isPremium: true,
           plan,
+          email: userRecord.email,
+          name: userRecord.displayName || '',
           renewalDate: Timestamp.fromDate(renewalDate),
           activatedAt: Timestamp.fromDate(now),
+          warningSent: false,
         }, { merge: true });
       }
     }
@@ -122,7 +163,7 @@ app.post('/create-card-payment', async (req, res) => {
 app.post('/create-pix', async (req, res) => {
   try {
     const { userId, plan, email } = req.body;
-    console.log('Gerando PIX para:', { userId, plan, email }); // <-- adiciona
+    console.log('Gerando PIX para:', { userId, plan, email });
 
     const amount = plan === 'yearly' ? 179.90 : 19.90;
     const description = plan === 'yearly' ? 'FluxTV Premium Anual' : 'FluxTV Premium Mensal';
@@ -135,17 +176,16 @@ app.post('/create-pix', async (req, res) => {
         'X-Idempotency-Key': `${userId}-${plan}-${Date.now()}`,
       },
       body: JSON.stringify({
-  transaction_amount: amount,
-  description: description,
-  payment_method_id: 'pix',
-  payer: { email: email },
-  metadata: { user_id: userId, plan: plan },
-  notification_url: 'https://fluxtv-backend-production.up.railway.app/webhook', // <-- adiciona
-}),
+        transaction_amount: amount,
+        description: description,
+        payment_method_id: 'pix',
+        payer: { email: email },
+        metadata: { user_id: userId, plan: plan },
+        notification_url: 'https://fluxtv-backend-production.up.railway.app/webhook',
+      }),
     });
 
     const payment = await response.json();
-    console.log('Resposta MP:', JSON.stringify(payment)); // <-- adiciona
 
     if (!payment.point_of_interaction) {
       return res.status(400).json({ error: 'Erro ao gerar PIX', details: payment });
@@ -168,15 +208,12 @@ app.post('/create-pix', async (req, res) => {
 app.get('/payment-status/:paymentId', async (req, res) => {
   try {
     const { paymentId } = req.params;
-
     const response = await fetch(
       `https://api.mercadopago.com/v1/payments/${paymentId}`,
       { headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` } }
     );
-
     const payment = await response.json();
     return res.json({ status: payment.status });
-
   } catch (error) {
     return res.status(500).json({ error: 'Erro ao verificar pagamento' });
   }
@@ -186,7 +223,6 @@ app.get('/payment-status/:paymentId', async (req, res) => {
 app.post('/create-preference', async (req, res) => {
   try {
     const { userId, plan, email } = req.body;
-
     const amount = plan === 'yearly' ? 179.90 : 19.90;
     const title = plan === 'yearly' ? 'FluxTV Premium Anual' : 'FluxTV Premium Mensal';
 
@@ -206,6 +242,7 @@ app.post('/create-preference', async (req, res) => {
           pending: 'https://fluxtv-player.web.app/premium-pending',
         },
         auto_return: 'approved',
+        notification_url: 'https://fluxtv-backend-production.up.railway.app/webhook',
       }),
     });
 
@@ -218,25 +255,50 @@ app.post('/create-preference', async (req, res) => {
   }
 });
 
+// ─── CRON JOB ─────────────────────────────────────────────────────────────────
 cron.schedule('0 0 * * *', async () => {
-  console.log('Verificando assinaturas expiradas...');
+  console.log('Verificando assinaturas...');
   try {
     const now = new Date();
-    const snapshot = await db.collection('users')
+    const in3Days = new Date(now);
+    in3Days.setDate(in3Days.getDate() + 3);
+
+    // Desativa expirados
+    const expiredSnapshot = await db.collection('users')
       .where('isPremium', '==', true)
       .where('renewalDate', '<=', Timestamp.fromDate(now))
       .get();
 
     const batch = db.batch();
-    snapshot.forEach(doc => {
+    expiredSnapshot.forEach(doc => {
       batch.update(doc.ref, { isPremium: false });
       console.log(`Premium expirado para usuário ${doc.id}`);
     });
-
     await batch.commit();
-    console.log(`${snapshot.size} assinatura(s) expirada(s) desativada(s).`);
+    console.log(`${expiredSnapshot.size} assinatura(s) expirada(s).`);
+
+    // Avisa quem expira em 3 dias
+    const warningSnapshot = await db.collection('users')
+      .where('isPremium', '==', true)
+      .where('renewalDate', '<=', Timestamp.fromDate(in3Days))
+      .where('renewalDate', '>', Timestamp.fromDate(now))
+      .get();
+
+    for (const doc of warningSnapshot.docs) {
+      const data = doc.data();
+      if (data.email && !data.warningSent) {
+        try {
+          await sendExpirationWarning(data.email, data.name, data.renewalDate);
+          await doc.ref.update({ warningSent: true });
+          console.log(`Email de aviso enviado para ${data.email}`);
+        } catch (e) {
+          console.error(`Erro ao enviar email para ${data.email}:`, e.message);
+        }
+      }
+    }
+
   } catch (error) {
-    console.error('Erro ao verificar assinaturas:', error);
+    console.error('Erro no cron job:', error);
   }
 });
 
