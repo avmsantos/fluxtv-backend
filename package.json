@@ -16,6 +16,6 @@
     "firebase-admin": "^14.1.0",
     "mercadopago": "^3.1.0",
     "node-cron": "^4.5.0",
-    "nodemailer": "^9.0.1"
+    "resend": "^6.16.0"
   }
 }

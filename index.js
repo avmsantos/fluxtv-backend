@@ -4,7 +4,7 @@ const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const dotenv = require('dotenv');
 const cron = require('node-cron');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 dotenv.config();
 
@@ -19,22 +19,14 @@ initializeApp({
 const db = getFirestore();
 
 // ─── EMAIL ────────────────────────────────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendExpirationWarning(email, name, renewalDate) {
   const date = renewalDate.toDate ? renewalDate.toDate() : new Date(renewalDate);
   const formatted = `${date.getDate().toString().padStart(2,'0')}/${(date.getMonth()+1).toString().padStart(2,'0')}/${date.getFullYear()}`;
   
-  await transporter.sendMail({
-    from: `"FluxTV" <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: 'FluxTV <onboarding@resend.dev>',
     to: email,
     subject: 'Seu plano FluxTV Premium expira em breve',
     html: `
@@ -263,7 +255,6 @@ cron.schedule('0 0 * * *', async () => {
     const in3Days = new Date(now);
     in3Days.setDate(in3Days.getDate() + 3);
 
-    // Desativa expirados
     const expiredSnapshot = await db.collection('users')
       .where('isPremium', '==', true)
       .where('renewalDate', '<=', Timestamp.fromDate(now))
@@ -277,7 +268,6 @@ cron.schedule('0 0 * * *', async () => {
     await batch.commit();
     console.log(`${expiredSnapshot.size} assinatura(s) expirada(s).`);
 
-    // Avisa quem expira em 3 dias
     const warningSnapshot = await db.collection('users')
       .where('isPremium', '==', true)
       .where('renewalDate', '<=', Timestamp.fromDate(in3Days))
@@ -302,11 +292,11 @@ cron.schedule('0 0 * * *', async () => {
   }
 });
 
-// ─── TESTE DE EMAIL (remover depois) ─────────────────────────────────────────
+// ─── TESTE DE EMAIL ───────────────────────────────────────────────────────────
 app.get('/test-email', async (req, res) => {
   try {
     await sendExpirationWarning(
-      process.env.EMAIL_USER,
+      'avmtechlab@gmail.com',
       'Amanda',
       Timestamp.fromDate(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000))
     );
