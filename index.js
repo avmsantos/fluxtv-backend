@@ -27,8 +27,11 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  tls: {
+    ciphers: 'SSLv3',
+    rejectUnauthorized: false,
+  },
 });
-
 async function sendExpirationWarning(email, name, renewalDate) {
   const date = renewalDate.toDate ? renewalDate.toDate() : new Date(renewalDate);
   const formatted = `${date.getDate().toString().padStart(2,'0')}/${(date.getMonth()+1).toString().padStart(2,'0')}/${date.getFullYear()}`;
