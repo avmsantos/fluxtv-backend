@@ -302,5 +302,20 @@ cron.schedule('0 0 * * *', async () => {
   }
 });
 
+// ─── TESTE DE EMAIL (remover depois) ─────────────────────────────────────────
+app.get('/test-email', async (req, res) => {
+  try {
+    await sendExpirationWarning(
+      process.env.EMAIL_USER,
+      'Amanda',
+      Timestamp.fromDate(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000))
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Erro teste email:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`FluxTV backend rodando na porta ${PORT}`));
