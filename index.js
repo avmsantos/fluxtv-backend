@@ -155,7 +155,6 @@ app.post('/create-card-payment', async (req, res) => {
 app.post('/create-pix', async (req, res) => {
   try {
     const { userId, plan, email } = req.body;
-    console.log('Gerando PIX para:', { userId, plan, email });
 
     const amount = plan === 'yearly' ? 179.90 : 19.90;
     const description = plan === 'yearly' ? 'FluxTV Premium Anual' : 'FluxTV Premium Mensal';
@@ -289,21 +288,6 @@ cron.schedule('0 0 * * *', async () => {
 
   } catch (error) {
     console.error('Erro no cron job:', error);
-  }
-});
-
-// ─── TESTE DE EMAIL ───────────────────────────────────────────────────────────
-app.get('/test-email', async (req, res) => {
-  try {
-    await sendExpirationWarning(
-      'avmtechlab@gmail.com',
-      'Amanda',
-      Timestamp.fromDate(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000))
-    );
-    return res.json({ success: true });
-  } catch (error) {
-    console.error('Erro teste email:', error);
-    return res.status(500).json({ error: error.message });
   }
 });
 
