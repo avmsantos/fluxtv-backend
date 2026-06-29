@@ -254,6 +254,7 @@ cron.schedule('0 0 * * *', async () => {
     const in3Days = new Date(now);
     in3Days.setDate(in3Days.getDate() + 3);
 
+    // ─── Desativa premium expirado ───────────────────────────────────────
     const expiredSnapshot = await db.collection('users')
       .where('isPremium', '==', true)
       .where('renewalDate', '<=', Timestamp.fromDate(now))
@@ -267,6 +268,7 @@ cron.schedule('0 0 * * *', async () => {
     await batch.commit();
     console.log(`${expiredSnapshot.size} assinatura(s) expirada(s).`);
 
+    // ─── Avisa quem expira em 3 dias ─────────────────────────────────────
     const warningSnapshot = await db.collection('users')
       .where('isPremium', '==', true)
       .where('renewalDate', '<=', Timestamp.fromDate(in3Days))
@@ -286,10 +288,31 @@ cron.schedule('0 0 * * *', async () => {
       }
     }
 
+    // ─── Desativa trial expirado ──────────────────────────────────────────
+    const trialSnapshot = await db.collection('users')
+      .where('isOnTrial', '==', true)
+      .get();
+
+    const trialBatch = db.batch(); // <-- novo batch separado
+    let trialExpired = 0;
+    for (const doc of trialSnapshot.docs) {
+      const data = doc.data();
+      if (data.trialStartDate) {
+        const trialEnd = data.trialStartDate.toDate();
+        trialEnd.setDate(trialEnd.getDate() + 7);
+        if (now > trialEnd) {
+          trialBatch.update(doc.ref, { isOnTrial: false });
+          trialExpired++;
+          console.log(`Trial expirado para usuário ${doc.id}`);
+        }
+      }
+    }
+    await trialBatch.commit();
+    console.log(`${trialExpired} trial(s) expirado(s).`);
+
   } catch (error) {
     console.error('Erro no cron job:', error);
   }
 });
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`FluxTV backend rodando na porta ${PORT}`));
